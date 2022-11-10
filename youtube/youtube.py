@@ -15,7 +15,8 @@ class YT:
         self.youtubeobject = youtubeobject
         self.filename_mp3 = ""
         self.filepath_mp3 = ""
-
+        self.youtube_orig = "https://youtube.com/watch?v="
+        self.youtube_music = "https://music.youtube.com/watch?v="
         self.ydl_opts = {
             "writethumbnail": True,
             "format": "bestaudio/best",
@@ -91,52 +92,58 @@ class YT:
                 self.youtubeobject.error = "file not found"
                 self.youtubeobject.save()
 
-    def extract_info(self):
+    def extract_info(self, is_music_url):
         logger = LoggingAdapter(newlogger, {'id': self.youtubeobject.id})
-        with youtube_dl.YoutubeDL(self.ydl_opts) as ydl:
-            logger.info("Starting metadata extraction ...")
-            extracted_info = ydl.extract_info(
-                self.youtubeobject.youtube_url,
-                download=False,
-                ie_key=None,
-                extra_info={},
-                process=True,
-                force_generic_extractor=False,
-            )
-            # print(extracted_info.keys())
-            try:
-                self.youtubeobject.description = extracted_info.get("description")
-                self.youtubeobject.title = extracted_info.get("title")
-                self.youtubeobject.categories = extracted_info.get("categories")
-                self.youtubeobject.tags = extracted_info.get("tags")
-            except Exception as e:
-                logger.warning(f"Some metadata could not be extracted: {e}")
+        youtube_target_url = self.youtube_orig + str(self.youtubeobject.youtube_id)
+        if is_music_url:
+            youtube_target_url = self.youtube_music + str(self.youtubeobject.youtube_id)
+        try:
+            with youtube_dl.YoutubeDL(self.ydl_opts) as ydl:
+                logger.info("Starting metadata extraction ...")
+                extracted_info = ydl.extract_info(
+                    youtube_target_url,
+                    download=False,
+                    ie_key=None,
+                    extra_info={},
+                    process=True,
+                    force_generic_extractor=False,
+                )
+                # print(extracted_info.keys())
+                try:
+                    self.youtubeobject.description = extracted_info.get("description")
+                    self.youtubeobject.title = extracted_info.get("title")
+                    self.youtubeobject.categories = extracted_info.get("categories")
+                    self.youtubeobject.tags = extracted_info.get("tags")
+                except Exception as e:
+                    logger.warning(f"Some metadata could not be extracted: {e}")
 
-            # CHECK IF PLAYLIST
-            if "entries" in extracted_info:
-                self.youtubeobject.is_playlist = True
-                logger.info("Playlist detected")
-                # IF PLAYLIST REPLACE EXTRACTED INFO WITH ONE ENTRY
-                extracted_info = self._extract_single_item()
-            else:
-                self.youtubeobject.is_playlist = False
-                logger.info("Not a playlist")
-
-            # CHECK IF MUSIC CATEGORY
-            if "Music" in extracted_info.get("categories"):
-                self.youtubeobject.is_music = True
-                logger.info("Music Category assigned")
-                # CHECK IF artist field is present
-                if "artist" in extracted_info:
-                    artist = extracted_info.get("artist")
-                    self.youtubeobject.artist = artist
-                    logger.info(f"Artist field found: {artist}")
+                # CHECK IF PLAYLIST
+                if "entries" in extracted_info:
+                    self.youtubeobject.is_playlist = True
+                    logger.info("Playlist detected")
+                    # IF PLAYLIST REPLACE EXTRACTED INFO WITH ONE ENTRY
+                    extracted_info = self._extract_single_item()
                 else:
-                    logger.info("Artist field not present")
-            else:
-                self.youtubeobject.is_music = False
-                logger.info("Other Category assigned")
-            self.youtubeobject.save()
+                    self.youtubeobject.is_playlist = False
+                    logger.info("Not a playlist")
+
+                # CHECK IF MUSIC CATEGORY
+                if "Music" in extracted_info.get("categories"):
+                    self.youtubeobject.is_music = True
+                    logger.info("Music Category assigned")
+                    # CHECK IF artist field is present
+                    if "artist" in extracted_info:
+                        artist = extracted_info.get("artist")
+                        self.youtubeobject.artist = artist
+                        logger.info(f"Artist field found: {artist}")
+                    else:
+                        logger.info("Artist field not present")
+                else:
+                    self.youtubeobject.is_music = False
+                    logger.info("Other Category assigned")
+                self.youtubeobject.save()
+        except Exception as e:
+            raise ExtractInfoError(e)
 
     def _extract_single_item(self):
         logger = LoggingAdapter(newlogger, {'id': self.youtubeobject.id})
@@ -170,6 +177,12 @@ class MyLogger(object):
         logger = LoggingAdapter(newlogger, {'id': self.youtubeobject_id})
         logger.error(msg)
 
+class ExtractInfoError(Exception):
+    def __init__(self, reason, message="ExtractInfoError"):
+        self.message = message
+        self.reason = reason
+    def __str__(self):
+        return f"{self.message} -> {self.reason}"
 
 # for reference
 # {'status': 'downloading', 'downloaded_bytes': 17131, 'total_bytes': 17131, 'tmpfilename':

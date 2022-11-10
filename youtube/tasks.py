@@ -21,19 +21,31 @@ def get_video(instance):
         instance.status = instance.Status.BUSY
         instance.save()
         youtube_process = YT(instance)
-        logger.info("Extracting Metadata ...")
-        youtube_process.extract_info()
+        logger.info("Extracting Metadata ...")    
+
+        try:
+            youtube_process.extract_info(is_music_url=True)
+            logger.info("succesfully extracted using music url ...")
+        except Exception as ex:
+            logger.error(ex)
+            logger.info("music url not available...trying regular url")
+            try:
+                youtube_process.extract_info(is_music_url=False)
+            except Exception as ey:
+                logger.error(f"regular url failed: {ey}")
+                raise Exception(ey)
+            
         logger.info("Finished extracting metadata ...")
         logger.info("Running download process ...")
         youtube_process.run()
         logger.info("Finished download process ...")
     except YoutubeDLError as ex:
-        logger.error("YoutubeDL error")
+        logger.error(f"YoutubeDL error: {ex}")
         instance.error = ex.args
         instance.status = instance.Status.FAILED
         instance.save()
     except Exception as e:
-        logger.error("YoutubeDL general error")
+        logger.error(f"YoutubeDL general error: {e}")
         instance.error = str(e)
         instance.status = instance.Status.FAILED
         instance.save()
@@ -69,43 +81,48 @@ def archive(instance):
     )
     if not path.is_file():
         raise ArchiveError(instance, "file is missing")
-
-    print("test3")
+    
     logger.info("Audio file is present")
-    print("test4")
 
     # check if music
     if not instance.is_music:
         raise ArchiveError(instance, "not Music category")
     logger.info("is Music category")
-    # check if artist exists
-    if instance.artist == None or instance.artist == "":
-        # check if title exists
-        if instance.title == None:
-            raise ArchiveError(instance, "title is missing")
-        else:
-            # check if tags
-            possible_artist = None
-            x = re.search(r"(^.*)-", instance.title)
-            if x is None:
-                raise ArchiveError(instance, "Could not derive artist from title")
-            else:
-                possible_artist = x.group(1).strip()
-                if not instance.tags == None:
-                    for tag in instance.tags:
-                        if possible_artist.lower() in tag.lower():
-                            instance.artist = possible_artist
-                            break
-                        else:
-                            instance.status = instance.Status.REVIEW
-                            instance.error = "Could not derive artist from title"
-                            instance.save()
-                            return
-                else:
-                    instance.status = instance.Status.REVIEW
-                    instance.error = "no tags present"
-                    instance.save()
-                    return
+
+    # check if title is available
+    if instance.title == None:
+        raise ArchiveError(instance, "title is missing")
+
+
+    # # check if artist exists
+    # if instance.artist == None or instance.artist == "":
+    #     # check if title exists
+    #     if instance.title == None:
+    #         raise ArchiveError(instance, "title is missing")
+    #     else:
+    #         # check if tags
+    #         possible_artist = None
+    #         x = re.search(r"(^.*)-", instance.title)
+    #         if x is None:
+    #             raise ArchiveError(instance, "Could not derive artist from title")
+    #         else:
+    #             possible_artist = x.group(1).strip()
+    #             if not instance.tags == None:
+    #                 for tag in instance.tags:
+    #                     if possible_artist.lower() in tag.lower():
+    #                         instance.artist = possible_artist
+    #                         break
+    #                     else:
+    #                         instance.status = instance.Status.REVIEW
+    #                         instance.error = "Could not derive artist from title"
+    #                         instance.save()
+    #                         return
+    #             else:
+    #                 instance.status = instance.Status.REVIEW
+    #                 instance.error = "no tags present"
+    #                 instance.save()
+    #                 return
+    
 
     if instance.status == instance.Status.ARCHIVE:
         values = {}
